@@ -35,9 +35,83 @@ No test framework is configured yet. When implementation begins, add focused tes
 
 ## Commit & Pull Request Guidelines
 
-Git history currently uses concise imperative commits, for example `Add project documentation and repo scaffolding`. Continue that style: `Add Auth0 token verifier`, `Document Plaid sync failures`.
+Follow [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0.0/). Each commit message has the shape:
 
-Pull requests should include a short summary, the V1 or post-MVP area affected, validation performed, and any configuration changes. Link related issues or ADRs when changing architecture or scope.
+```
+<type>[optional scope][!]: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+**Types used in this repo:**
+
+- `feat`: a new user-facing capability (MINOR in SemVer)
+- `fix`: a bug fix (PATCH in SemVer)
+- `docs`: documentation only
+- `refactor`: code change that neither fixes a bug nor adds a feature
+- `perf`: performance improvement
+- `test`: adding or correcting tests
+- `build`: build system, dependencies, or tooling (`pnpm`, `tsconfig`, Docker)
+- `ci`: CI configuration and scripts
+- `chore`: maintenance that doesn't fit the above (no production code change)
+- `style`: formatting only (whitespace, semicolons) — no logic change
+
+**Scopes** match the V1 surface, e.g. `auth`, `plaid`, `mcp`, `db`, `migrations`, `docs`, `ops`. Use a single lowercase word; omit if the change is repo-wide.
+
+**Description rules:**
+
+- Imperative mood, lowercase, no trailing period (`add Plaid sync retry`, not `Added...`).
+- Keep the subject line under ~72 characters.
+- One blank line between description, body, and footers.
+
+**Breaking changes** must be signalled either by appending `!` after the type/scope (`feat(mcp)!: drop legacy tool schema`) or by a `BREAKING CHANGE: <explanation>` footer — preferably both. Either form bumps MAJOR. `BREAKING CHANGE` must be uppercase; `BREAKING-CHANGE` is accepted as a synonym in footers.
+
+**Footers** follow the `Token: value` or `Token #ref` form, one blank line after the body. Common tokens: `Refs:`, `Closes:`, `Co-authored-by:`.
+
+**Examples:**
+
+```
+feat(plaid): encrypt access tokens at rest
+
+fix(auth): reject Auth0 tokens with missing `aud` claim
+
+docs(v1-spec): clarify Plaid sync failure modes
+
+refactor(mcp)!: rename search-transactions tool arguments
+
+BREAKING CHANGE: clients must update tool argument names from
+`q` to `query` and `from`/`to` to `start_date`/`end_date`.
+```
+
+### Committing with `git acp`
+
+A repo-local git alias `acp` ("add, commit, push") is configured in `.git/config` to run the full add → commit → push flow in one step:
+
+```sh
+git acp "feat(plaid): encrypt access tokens at rest"
+```
+
+It enforces the safety guards we rely on:
+
+- requires a commit message
+- refuses to run on `main`, `master`, `release`, or `production`
+- refuses to run with a detached `HEAD` or when there is nothing to commit
+- never passes `--no-verify` — `pre-commit` (lint, typecheck, test) and any future `commit-msg`/`pre-push` hooks always run
+- never force-pushes; sets upstream automatically on the first push of a new branch
+
+The alias is repo-local (set via `git config --local`) and is not version-controlled. New contributors should re-run the setup in `docs/v1-spec/onboarding/run-and-debug.md`, or invoke the steps manually.
+
+### Pull requests
+
+Open PRs with:
+
+- a title in the same Conventional Commits format as the squash-merge target
+- a summary that names the V1 (or post-MVP) area affected and the motivation
+- the validation you performed (`pnpm lint`, `pnpm typecheck`, `pnpm test`, manual MCP calls, migration dry-runs, etc.)
+- any configuration, environment-variable, or migration changes called out explicitly
+- links to related issues, ADRs, or `docs/v1-spec/` sections when the change touches architecture or scope
 
 ## Security & Configuration Tips
 

@@ -14,15 +14,35 @@ The app needs:
 
 ## Local run
 
-Expected command shape after code is scaffolded:
+Copy the local example environment and fill in the Auth0 and Plaid placeholders:
+
+```text
+cp .env.example .env
+```
+
+Install dependencies, start local Postgres, run migrations, and start the app:
 
 ```text
 pnpm install
+docker compose up -d postgres
 pnpm db:migrate
 pnpm dev
 ```
 
-Then open the setup route, log in with the allowlisted Auth0 user, complete Plaid Link, and run sync.
+The app prints the local health, setup, and MCP URLs on startup. For this foundation step, `GET /healthz` is the only implemented route; setup, Plaid sync, and MCP routes are added in later milestones.
+
+Before opening a pull request, run:
+
+```text
+pnpm build
+pnpm lint
+pnpm typecheck
+pnpm test
+```
+
+Pre-commit checks run `pnpm lint`, `pnpm typecheck`, and `pnpm test` through Husky. Only bypass them intentionally with Git's standard `--no-verify` flag, or by setting `HUSKY=0` for a one-off command.
+
+After later milestones add setup and sync routes, open the setup route, log in with the allowlisted Auth0 user, complete Plaid Link, and run sync.
 
 ## Remote smoke test
 
