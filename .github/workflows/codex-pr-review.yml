@@ -10,13 +10,18 @@ on:
       - reopened
       - ready_for_review
 
+concurrency:
+  group: codex-pr-review-auth-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
   codex:
     name: Review PR
     if: >-
       ${{
         github.event.pull_request.head.repo.full_name == github.repository &&
-        github.event.pull_request.draft == false
+        github.event.pull_request.draft == false &&
+        github.actor == 'DanielOrtiz0220'
       }}
     runs-on: ubuntu-latest
     permissions:
@@ -40,9 +45,19 @@ jobs:
             "+refs/heads/${GITHUB_BASE_REF}:refs/remotes/origin/${GITHUB_BASE_REF}" \
             "+refs/pull/${{ github.event.pull_request.number }}/head:refs/remotes/origin/pr-${{ github.event.pull_request.number }}"
 
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Install Codex
+        shell: bash
+        run: npm install -g @openai/codex@latest
+
       - name: Prepare Codex auth
         shell: bash
         env:
+          CODEX_HOME: ${{ runner.temp }}/codex-home
           CODEX_AUTH_JSON_B64: ${{ secrets.CODEX_AUTH_JSON_B64 }}
         run: |
           set -euo pipefail
@@ -51,24 +66,71 @@ jobs:
             exit 1
           fi
 
-          install -d -m 700 "${RUNNER_TEMP}/codex-home"
-          printf '%s' "${CODEX_AUTH_JSON_B64}" | base64 --decode > "${RUNNER_TEMP}/codex-home/auth.json"
-          chmod 600 "${RUNNER_TEMP}/codex-home/auth.json"
+          install -d -m 700 "${CODEX_HOME}"
+          printf '%s' "${CODEX_AUTH_JSON_B64}" | base64 --decode > "${CODEX_HOME}/auth.json"
+          chmod 600 "${CODEX_HOME}/auth.json"
+
+          printf '%s\n' 'cli_auth_credentials_store = "file"' > "${CODEX_HOME}/config.toml"
+
+      - name: Validate Codex auth
+        shell: bash
+        env:
+          CODEX_HOME: ${{ runner.temp }}/codex-home
+        run: |
+          set -euo pipefail
+          jq -e '
+            .auth_mode == "chatgpt" and
+            (((.tokens.refresh_token? // .refresh_token? // .refreshToken? // "") | strings | length) > 0)
+          ' "${CODEX_HOME}/auth.json" > /dev/null
 
       - name: Run Codex review
         id: codex
-        uses: openai/codex-action@v1
+        shell: bash
         env:
+          CODEX_HOME: ${{ runner.temp }}/codex-home
           CODEX_PR_BASE_REF: origin/${{ github.event.pull_request.base.ref }}
           CODEX_PR_HEAD_REF: origin/pr-${{ github.event.pull_request.number }}
-        with:
-          model: gpt-5.5
-          effort: xhigh
-          sandbox: read-only
-          safety-strategy: drop-sudo
-          codex-home: ${{ runner.temp }}/codex-home
-          prompt-file: .github/codex/prompts/pr-review.md
-          allow-users: DanielOrtiz0220
+        run: |
+          set -euo pipefail
+          final_message_file="$(mktemp)"
+
+          codex exec \
+            --cd "$GITHUB_WORKSPACE" \
+            --model gpt-5.5 \
+            --sandbox read-only \
+            --output-last-message "$final_message_file" \
+            -c 'model_reasoning_effort="xhigh"' \
+            - < .github/codex/prompts/pr-review.md
+
+          delimiter="codex_final_$(uuidgen)"
+          while grep -Fqx "$delimiter" "$final_message_file"; do
+            delimiter="codex_final_$(uuidgen)"
+          done
+
+          {
+            echo "final-message<<${delimiter}"
+            cat "$final_message_file"
+            echo "${delimiter}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Persist refreshed Codex auth
+        if: always()
+        shell: bash
+        env:
+          CODEX_HOME: ${{ runner.temp }}/codex-home
+          CODEX_SECRET_UPDATE_TOKEN: ${{ secrets.CODEX_SECRET_UPDATE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -f "${CODEX_HOME}/auth.json" ]; then
+            if [ -z "${CODEX_SECRET_UPDATE_TOKEN:-}" ]; then
+              echo "CODEX_SECRET_UPDATE_TOKEN secret is not configured." >&2
+              exit 1
+            fi
+
+            base64 -w 0 "${CODEX_HOME}/auth.json" |
+              GH_TOKEN="${CODEX_SECRET_UPDATE_TOKEN}" gh secret set CODEX_AUTH_JSON_B64 \
+                --repo "$GITHUB_REPOSITORY"
+          fi
 
       - name: Remove Codex auth
         if: always()
@@ -83,6 +145,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
+      issues: write
 
     steps:
       - name: Upsert Codex review comment
