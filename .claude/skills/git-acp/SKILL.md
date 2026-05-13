@@ -1,44 +1,50 @@
 ---
 name: git-acp
-description: Commit and push in the Coffer-mcp repo using the repo-local `git acp` alias with Conventional Commits per AGENTS.md. Invoke whenever the user asks to commit, push, or "save" changes in this repo — do not fall back to raw `git add`/`commit`/`push`.
+description: Commit and push changes in the Coffer-mcp repo with the repo-local `git acp` alias and Conventional Commits. Use when the user asks to commit, push, publish, or save repo changes; first verify all worktree changes belong in the commit because `git acp` stages everything.
 ---
 
-# git acp — commit and push the Coffer-mcp repo
+# git acp
 
-This repo commits via a repo-local git alias `acp` ("add, commit, push") that runs the full flow in one step and enforces the safety guards we rely on. **Use it instead of raw `git add` / `git commit` / `git push` whenever you commit in this repo.**
+Use the repo-local `git acp` alias for normal commit-and-push work in this repository.
 
 ```sh
 git acp "<conventional commit message>"
 ```
 
-## What the alias does
+The alias is configured in `.git/config`, not version-controlled. It runs `git add -A`, commits with the supplied message, then pushes. On a new branch it sets upstream with `git push -u origin <branch>`.
 
-Defined in `.git/config` (not version-controlled). The flow:
+## Before running
 
-1. Requires a non-empty commit message argument.
-2. Refuses to run on `main`, `master`, `release`, or `production`.
-3. Refuses with a detached `HEAD` or when there is nothing to commit.
-4. Runs `git add -A` → `git commit -m "$1"` → `git push`.
-5. On the first push of a new branch, sets upstream with `git push -u origin <branch>`.
-6. Never passes `--no-verify` — `pre-commit` (lint, typecheck, test) and any future `commit-msg`/`pre-push` hooks always run.
-7. Never force-pushes.
+1. Run `git status --short --branch`.
+2. Inspect unstaged and staged changes with `git diff` and `git diff --cached`.
+3. Confirm the current branch is not `main`, `master`, `release`, or `production`.
+4. Confirm every worktree change belongs in the requested commit. `git acp` stages everything.
+5. Compose a Conventional Commit message from the actual diff.
 
-If the alias is missing (fresh clone), re-run the setup described in `docs/v1-spec/onboarding/run-and-debug.md` before committing.
+If unrelated or user-owned changes are present, do not run `git acp`. Ask how to split the commit, or use explicit raw git only after the user agrees to a selective commit path.
 
-## When to invoke
+## Safety rules
 
-Invoke this skill whenever the user asks you to commit, push, or "save" changes in the Coffer-mcp working tree. Compose the message yourself from the staged diff per the rules below — only ask the user for input when the intent of the change is ambiguous.
+- Do not bypass hooks with `--no-verify`.
+- Do not force-push.
+- Do not commit secrets, Plaid tokens, Auth0 secrets, AES keys, database URLs, or raw financial payloads.
+- If hooks fail, report the failing hook and relevant output; do not bypass it.
+- If the alias is missing, read `AGENTS.md` and `.git/config` context, then ask before recreating local git configuration.
 
-Do NOT:
-- Run raw `git add`, `git commit`, or `git push` in this repo (use `git acp`).
-- Pass `--no-verify` or otherwise skip hooks.
-- Force-push.
-- Commit on `main`/`master`/`release`/`production` — switch to a feature branch first.
-- Commit secrets (Plaid tokens, Auth0 secrets, AES keys, database URLs, raw financial payloads).
+## Alias behavior
+
+Expect these guards:
+
+- Requires a non-empty commit message.
+- Refuses detached `HEAD`.
+- Refuses protected branches: `main`, `master`, `release`, `production`.
+- Refuses when there is nothing to commit.
+- Runs hooks normally.
+- Pushes without force.
 
 ## Conventional Commits format
 
-Follow [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0.0/):
+Use:
 
 ```
 <type>[optional scope][!]: <description>
@@ -50,8 +56,8 @@ Follow [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0
 
 ### Types used in this repo
 
-- `feat`: a new user-facing capability (MINOR in SemVer)
-- `fix`: a bug fix (PATCH in SemVer)
+- `feat`: new user-facing capability
+- `fix`: bug fix
 - `docs`: documentation only
 - `refactor`: code change that neither fixes a bug nor adds a feature
 - `perf`: performance improvement
@@ -59,21 +65,21 @@ Follow [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0
 - `build`: build system, dependencies, or tooling (`pnpm`, `tsconfig`, Docker)
 - `ci`: CI configuration and scripts
 - `chore`: maintenance that doesn't fit the above (no production code change)
-- `style`: formatting only (whitespace, semicolons) — no logic change
+- `style`: formatting only (whitespace, semicolons) - no logic change
 
 ### Scopes
 
-Match the V1 surface: `auth`, `plaid`, `mcp`, `db`, `migrations`, `docs`, `ops`. Use a single lowercase word; omit if the change is repo-wide.
+Use a single lowercase word matching the V1 surface when helpful: `auth`, `plaid`, `mcp`, `db`, `migrations`, `docs`, `ops`. Omit the scope for repo-wide changes.
 
 ### Description rules
 
-- Imperative mood, lowercase, no trailing period (`add Plaid sync retry`, not `Added...`).
+- Imperative mood, lowercase, no trailing period.
 - Subject line under ~72 characters.
 - One blank line between description, body, and footers.
 
 ### Breaking changes
 
-Signal with either `!` after the type/scope (`feat(mcp)!: drop legacy tool schema`) or a `BREAKING CHANGE: <explanation>` footer — preferably both. Either form bumps MAJOR. `BREAKING CHANGE` must be uppercase; `BREAKING-CHANGE` is accepted as a synonym in footers.
+Signal with either `!` after the type/scope (`feat(mcp)!: drop legacy tool schema`) or a `BREAKING CHANGE: <explanation>` footer - preferably both. Either form bumps MAJOR. `BREAKING CHANGE` must be uppercase; `BREAKING-CHANGE` is accepted as a synonym in footers.
 
 ### Footers
 
@@ -96,7 +102,7 @@ BREAKING CHANGE: clients must update tool argument names from
 
 ## Multi-line messages
 
-`git acp` forwards its single argument to `git commit -m`. Pass a multi-line message via a quoted heredoc so the subject, body, and footers stay separated by blank lines:
+Pass a multi-line message via a quoted heredoc so the subject, body, and footers keep blank lines:
 
 ```sh
 git acp "$(cat <<'EOF'
@@ -111,13 +117,6 @@ EOF
 )"
 ```
 
-## Before invoking
-
-- Run `git status` and `git diff` (staged + unstaged) to understand the change.
-- Confirm the current branch is not protected.
-- Confirm there are changes to commit.
-- Stage nothing by hand — `git acp` runs `git add -A` for you. If files must be excluded, commit selectively with raw git first and call that out to the user, since it sidesteps the alias contract.
-
 ## Pull requests
 
-PRs follow the same Conventional Commits format as the squash-merge target. See `AGENTS.md` § "Pull requests" for required summary, validation, and configuration-change callouts.
+PR titles follow the same Conventional Commits format as the squash-merge target. See `AGENTS.md` for required PR summary, validation, and configuration-change callouts.
