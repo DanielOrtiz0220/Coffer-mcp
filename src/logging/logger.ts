@@ -1,4 +1,4 @@
-import pino from "pino";
+import { pino, type Logger } from "pino";
 
 import type { AppConfig } from "../config/env.js";
 
@@ -21,7 +21,7 @@ const forbiddenLogFields = [
   "tool_result"
 ];
 
-export type AppLogger = pino.Logger;
+export type AppLogger = Logger;
 
 export function createLogger(config: Pick<AppConfig, "logLevel" | "nodeEnv">): AppLogger {
   return pino({

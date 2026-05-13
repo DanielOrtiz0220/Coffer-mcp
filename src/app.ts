@@ -11,7 +11,7 @@ export interface CreateAppOptions {
 
 export function createApp(options: CreateAppOptions = {}): Hono<{ Variables: AppVariables }> {
   const logger = options.logger ?? createLogger({ logLevel: "silent", nodeEnv: "test" });
-  const healthCheck = options.healthCheck ?? (async () => undefined);
+  const healthCheck = options.healthCheck ?? (() => Promise.resolve());
   const app = new Hono<{ Variables: AppVariables }>();
 
   app.use("*", requestLogging(logger));

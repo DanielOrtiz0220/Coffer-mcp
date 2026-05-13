@@ -6,7 +6,7 @@ const logger = createLogger({ logLevel: "silent", nodeEnv: "test" });
 describe("GET /healthz", () => {
   it("returns ok when the database check passes", async () => {
     const app = createApp({
-      healthCheck: async () => undefined,
+      healthCheck: () => Promise.resolve(),
       logger
     });
 
@@ -19,9 +19,7 @@ describe("GET /healthz", () => {
 
   it("returns a safe 503 error when the database check fails", async () => {
     const app = createApp({
-      healthCheck: async () => {
-        throw new Error("connection refused: postgres://user:pass@localhost/db");
-      },
+      healthCheck: () => Promise.reject(new Error("connection refused: postgres://user:pass@localhost/db")),
       logger
     });
 
