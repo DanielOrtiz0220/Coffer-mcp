@@ -31,10 +31,12 @@ V1 operations are built for a private prototype.
 
 ## Local run checklist
 
-Until code is scaffolded, the expected local shape is:
+The local foundation uses Docker Compose for Postgres and pnpm for the Node app:
 
 ```text
+cp .env.example .env
 pnpm install
+docker compose up -d postgres
 pnpm db:migrate
 pnpm dev
 ```

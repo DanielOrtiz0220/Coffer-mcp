@@ -1,0 +1,132 @@
+name: Codex PR review
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+jobs:
+  codex:
+    name: Review PR
+    if: >-
+      ${{
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.draft == false
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    outputs:
+      final_message: ${{ steps.codex.outputs.final-message }}
+
+    steps:
+      - name: Check out pull request
+        uses: actions/checkout@v5
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          fetch-depth: 0
+
+      - name: Fetch review refs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin \
+            "+refs/heads/${GITHUB_BASE_REF}:refs/remotes/origin/${GITHUB_BASE_REF}" \
+            "+refs/pull/${{ github.event.pull_request.number }}/head:refs/remotes/origin/pr-${{ github.event.pull_request.number }}"
+
+      - name: Prepare Codex auth
+        shell: bash
+        env:
+          CODEX_AUTH_JSON_B64: ${{ secrets.CODEX_AUTH_JSON_B64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CODEX_AUTH_JSON_B64:-}" ]; then
+            echo "CODEX_AUTH_JSON_B64 secret is not configured." >&2
+            exit 1
+          fi
+
+          install -d -m 700 "${RUNNER_TEMP}/codex-home"
+          printf '%s' "${CODEX_AUTH_JSON_B64}" | base64 --decode > "${RUNNER_TEMP}/codex-home/auth.json"
+          chmod 600 "${RUNNER_TEMP}/codex-home/auth.json"
+
+      - name: Run Codex review
+        id: codex
+        uses: openai/codex-action@v1
+        env:
+          CODEX_PR_BASE_REF: origin/${{ github.event.pull_request.base.ref }}
+          CODEX_PR_HEAD_REF: origin/pr-${{ github.event.pull_request.number }}
+        with:
+          model: gpt-5.5
+          effort: xhigh
+          sandbox: read-only
+          safety-strategy: drop-sudo
+          codex-home: ${{ runner.temp }}/codex-home
+          prompt-file: .github/codex/prompts/pr-review.md
+          allow-users: DanielOrtiz0220
+
+      - name: Remove Codex auth
+        if: always()
+        shell: bash
+        run: rm -f "${RUNNER_TEMP}/codex-home/auth.json"
+
+  comment:
+    name: Post sticky comment
+    needs:
+      - codex
+    if: ${{ needs.codex.outputs.final_message != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Upsert Codex review comment
+        uses: actions/github-script@v7
+        env:
+          CODEX_FINAL_MESSAGE: ${{ needs.codex.outputs.final_message }}
+        with:
+          script: |
+            const marker = '<!-- codex-pr-review -->';
+            const finalMessage = (process.env.CODEX_FINAL_MESSAGE || '').trim();
+
+            if (!finalMessage) {
+              core.info('Codex did not return a final message; skipping comment.');
+              return;
+            }
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const body = `${marker}\n${finalMessage}`;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const existing = comments.find((comment) => {
+              return comment.user?.type === 'Bot' && comment.body?.includes(marker);
+            });
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body,
+            });

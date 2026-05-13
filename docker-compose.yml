@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: coffer
+      POSTGRES_PASSWORD: coffer_dev_password
+      POSTGRES_DB: coffer_mcp
+    ports:
+      - "5432:5432"
+    volumes:
+      - coffer_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coffer -d coffer_mcp"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  coffer_postgres_data:
